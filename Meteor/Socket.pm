@@ -37,6 +37,7 @@ package Meteor::Socket;
 	use strict;
 	
 	use Socket;
+        use Socket6 qw(inet_ntop inet_pton in6addr_any);
 	use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
 	use Errno qw(EINTR);
 	
@@ -84,7 +85,7 @@ sub newWithHandle {
 	return $self;
 }
 
-sub newServer {
+sub new4Server {
 	my($class,$port,$queueSize,$srcIP)=@_;
 	
 	($port) || die("$class: port undefined!");
@@ -101,8 +102,53 @@ sub newServer {
 	my $proto=$Meteor::Socket::TCP_PROTO_NAME;
 	
 	$self->{'port'}=$port;
+	$self->{'family'}=AF_INET;
 	($local=sockaddr_in($port,$localAdr))
 		|| die("$class: sockaddr_in for port '$port' failed");
+	
+	$self->{'handle'}=$self->nextHandle();
+	$self->{'socketType'}=$sockType;
+	
+	socket($self->{'handle'},$sockType,SOCK_STREAM,$proto)
+		|| die("$class socket: $!");
+	
+	setsockopt($self->{'handle'},SOL_SOCKET,SO_REUSEADDR,1);
+	
+	bind($self->{'handle'},$local)
+		|| die("$class bind: $!");
+	listen($self->{'handle'},$queueSize)
+		|| die("$class listen: $!");
+		
+	select((select($self->{'handle'}),$|=1)[0]);
+	
+	my $vec='';
+	vec($vec,CORE::fileno($self->{'handle'}),1)=1;
+	$self->{'handleVec'}=$vec;
+	
+	return $self;
+}
+
+sub new6Server {
+	my($class,$port,$queueSize,$srcIP)=@_;
+	
+	($port) || die("$class: port undefined!");
+	
+	$queueSize||=5;
+	
+	my $self=$class->new;
+	
+	my $localAdr=INADDR_ANY;
+        #$localAdr=inet_aton($srcIP) if(defined($srcIP) && $srcIP ne '');
+	
+	my $local;
+	my $sockType=AF_INET6;
+	my $proto=$Meteor::Socket::TCP_PROTO_NAME;
+	
+	$self->{'port'}=$port;
+	$self->{'family'}=AF_INET6;
+	$local=pack_sockaddr_in6($port,in6addr_any());
+#	($local=sockaddr_in($port,$localAdr))
+#		|| die("$class: sockaddr_in for port '$port' failed");
 	
 	$self->{'handle'}=$self->nextHandle();
 	$self->{'socketType'}=$sockType;
@@ -191,15 +237,18 @@ sub conSocket {
 	
 	my $newSock=Meteor::Socket->newWithHandle($handle,20);
 	$newSock->{'socketType'}=$self->{'socketType'};
-	if($self->{'socketType'}==AF_INET)
-	{
-		my($port,$iaddr)=unpack_sockaddr_in($paddr);
-		
-		$newSock->{'connection'}->{'port'}=$port;
-		$newSock->{'connection'}->{'remoteIP'}=inet_ntoa($iaddr);
-	}
-	
-	return $newSock;
+	$newSock->{'family'}=$self->{'family'};
+        if($self->{'socketType'}==AF_INET) {
+            my($port,$iaddr)=unpack_sockaddr_in($paddr);
+            $newSock->{'connection'}->{'port'}=$port;
+            $newSock->{'connection'}->{'remoteIP'}=inet_ntoa($iaddr);
+        }elsif($self->{'socketType'}==AF_INET6){
+            my($port,$iaddr)=unpack_sockaddr_in6($paddr);
+            $newSock->{'connection'}->{'port'}=$port;
+            $newSock->{'connection'}->{'remoteIP'}=inet_ntop($self->{'family'},$iaddr);
+        }
+
+    return $newSock;
 }
 
 sub setNonBlocking {
@@ -287,3 +336,4 @@ sub fileno {
 
 1;
 ############################################################################EOF
+

@@ -48,7 +48,7 @@ package Meteor::Config;
 'Configuration file location on disk (if any)',
 	ConfigFileLocation		=> '/etc/meteord.conf',
 
-'IP address for controller server (leave empty for all local addresses)',
+'IPv4 address for controller server (leave empty for all local addresses)',
 	ControllerIP			=> '',
 
 'Port number for controller connections',
@@ -96,8 +96,11 @@ package Meteor::Config;
 'Message to be sent to all persistent subscriber connections (see above) every PingInterval seconds',
 	PingMessage				=> '<script>p(-1,"");</script>\r\n',
 
-'IP address for subscriber server (leave empty for all local addresses)',
+'IPv4 address for subscriber server (leave empty for all local addresses)',
 	SubscriberIP			=> '',
+
+'IPv6 address for subscriber server (leave empty for all local addresses)',
+	SubscriberIP6			=> '',
 
 'Port number for subscriber connections',
 	SubscriberPort			=> 4670,
@@ -113,6 +116,9 @@ package Meteor::Config;
 
 'The syslog facility to use',
 	SyslogFacility			=> 'daemon',
+	
+'PidFile path',
+	PidFile     => '/var/run/meteord.pid',
 	
 'IP address for udp server (leave empty for all local addresses)',
 	UDPIP					=> '',

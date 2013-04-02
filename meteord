@@ -125,7 +125,7 @@
 			open(NULL,'/dev/null');
 			<NULL> if(0);
 			
-			open(OUT,">/var/run/$::PGM.pid");
+			open(OUT,">".$::CONF{'PidFile'});
 			print OUT "$$\n";
 			close(OUT);
 		}
@@ -149,20 +149,36 @@
 	#
 	my $con_counter=0;
 	my $con;
+
+	my $subscriber4ServerFN=undef;
+	my $subscriber6ServerFN=undef;
 	
-	my $controlServer=Meteor::Socket->newServer(
+	my $controlServer=Meteor::Socket->new4Server(
 		$::CONF{'ControllerPort'},
 		$CONTROL_QUEUE_SIZE,
 		$::CONF{'ControllerIP'}
 	);
 	my $controlServerFN=$controlServer->fileno();
 	
-	my $subscriberServer=Meteor::Socket->newServer(
-		$::CONF{'SubscriberPort'},
-		$SUBSCRIBER_QUEUE_SIZE,
-		$::CONF{'SubscriberIP'}
-	);
-	my $subscriberServerFN=$subscriberServer->fileno();
+        my $subscriber4Server=undef;
+        if($::CONF{'SubscriberIP'}){
+            $subscriber4Server=Meteor::Socket->new4Server(
+                $::CONF{'SubscriberPort'},
+                $SUBSCRIBER_QUEUE_SIZE,
+                $::CONF{'SubscriberIP'}
+            );
+            $subscriber4ServerFN=$subscriber4Server->fileno();
+        }
+
+	my $subscriber6Server=undef;
+        if($::CONF{'SubscriberIP6'}){
+            $subscriber6Server=Meteor::Socket->new6Server(
+                $::CONF{'SubscriberPort'},
+                $SUBSCRIBER_QUEUE_SIZE,
+                $::CONF{'SubscriberIP6'}
+            );
+            $subscriber6ServerFN=$subscriber6Server->fileno();
+        }
 	
 	my $udpServer=undef;
 	my $udpPort=$::CONF{'UDPPort'};
@@ -178,7 +194,12 @@
 	
 	my $serverVector='';
 	vec($serverVector,$controlServerFN,1)=1;
-	vec($serverVector,$subscriberServerFN,1)=1;
+        if($subscriber4ServerFN){
+            vec($serverVector,$subscriber4ServerFN,1)=1;
+        }
+        if($subscriber6ServerFN){
+            vec($serverVector,$subscriber6ServerFN,1)=1;
+        }
 	vec($serverVector,$udpServerFN,1)=1 if(defined($udpServerFN));
 	
 	my $lastAgeCheck=time;
@@ -223,10 +244,18 @@
 					{
 						Meteor::Controller->newFromServer($controlServer);
 					}
-					if(vec($rout,$subscriberServerFN,1))
-					{
-						Meteor::Subscriber->newFromServer($subscriberServer);
-					}
+                                        if($subscriber4ServerFN){
+                                            if(vec($rout,$subscriber4ServerFN,1))
+                                            {
+                                                Meteor::Subscriber->newFromServer($subscriber4Server);
+                                            }
+                                        }
+                                        if($subscriber6ServerFN){
+                                            if(vec($rout,$subscriber6ServerFN,1))
+                                            {
+                                                Meteor::Subscriber->newFromServer($subscriber6Server);
+                                            }
+                                        }
 					if(defined($udpServerFN) && vec($rout,$udpServerFN,1))
 					{
 						&handleUPD($udpServer);
@@ -308,10 +337,11 @@
 	{
 		&::syslog('info',"Received SIGTERM, begin shutdown!");
 		
-		$subscriberServer->close();
+		$subscriber4Server->close() if($subscriber4Server);
+		$subscriber6Server->close() if($subscriber6Server);
 		$controlServer->close();
 		
-		unlink("/var/run/$::PGM.pid") unless($::CONF{'Debug'});
+		unlink($::CONF{'PidFile'}) unless($::CONF{'Debug'});
 		
 		Meteor::Connection->closeAllConnections();
 		
